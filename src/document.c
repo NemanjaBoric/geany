@@ -1678,6 +1678,7 @@ struct write_data_args
 	gchar *locale_filename;
 	gchar *data;
 	gsize len;
+	GeanyDocument* doc;
 };
 
 
@@ -1690,11 +1691,35 @@ static void* write_data_thread(void* args)
 
 		
 
+
+
+
+	gdk_threads_enter();
+
+
+	sci_set_savepoint(data->doc->editor->sci);
+
+	if (file_prefs.disk_check_timeout > 0)
+		document_update_timestamp(data->doc, data->locale_filename);
+
+	/* update filetype-related things */
+	document_set_filetype(data->doc, data->doc->file_type);
+
+	document_update_tab_label(data->doc);
+
+	msgwin_status_add(_("File %s saved."), data->doc->file_name);
+	ui_update_statusbar(data->doc, -1);
+#ifdef HAVE_VTE
+	vte_cwd((data->doc->real_path != NULL) ? data->doc->real_path : data->doc->file_name, FALSE);
+#endif
+	
+
+	gdk_threads_leave();
+
 	g_free(data->locale_filename);
 	g_free(data->data);
 	free(data);
-
-
+	
 	G_LOCK(write_lock);
 	{
 		write_lock = 0;
@@ -1723,6 +1748,7 @@ static gchar *save_doc_async(GeanyDocument *doc, const gchar *locale_filename,
 	args->locale_filename = locale_filename;
 	args->data = data;
 	args->len = len;
+	args->doc = doc;
 
 	// Call thread right here!	
 	pthread_create(&tid, NULL, write_data_thread, args);
@@ -1888,21 +1914,6 @@ gboolean document_save_file(GeanyDocument *doc, gboolean force)
 	/* ignore the following things if we are quitting */
 	if (! main_status.quitting)
 	{
-		sci_set_savepoint(doc->editor->sci);
-
-		if (file_prefs.disk_check_timeout > 0)
-			document_update_timestamp(doc, locale_filename);
-
-		/* update filetype-related things */
-		document_set_filetype(doc, doc->file_type);
-
-		document_update_tab_label(doc);
-
-		msgwin_status_add(_("File %s saved."), doc->file_name);
-		ui_update_statusbar(doc, -1);
-#ifdef HAVE_VTE
-		vte_cwd((doc->real_path != NULL) ? doc->real_path : doc->file_name, FALSE);
-#endif
 	}
 	//g_free(locale_filename);
 
