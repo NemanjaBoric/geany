@@ -1,0 +1,7 @@
+The main reason for this fork is moving "Save file" 
+functionality into the background thread. Please note
+that this is not safe at all, but it helps me working
+on sshfs mounted directory, as saving file is causing
+lag of few seconds when executed in the main thread.
+
+Nemanja
