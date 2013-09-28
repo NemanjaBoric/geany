@@ -285,6 +285,15 @@ void document_grab_focus(GeanyDocument *doc);
 
 GeanyDocument *document_clone(GeanyDocument *old_doc);
 
+
+static gchar *save_doc_async(GeanyDocument *doc, const gchar *locale_filename,
+                                                                 const gchar *data, gsize len);
+
+
+
 G_END_DECLS
+
+
+
 
 #endif

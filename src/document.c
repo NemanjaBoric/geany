@@ -1669,6 +1669,57 @@ static gchar *save_doc(GeanyDocument *doc, const gchar *locale_filename,
 	return NULL;
 }
 
+struct write_data_args
+{
+	gchar *locale_filename;
+	gchar *data;
+	gsize len;
+};
+
+static void* write_data_thread(void* args)
+{
+	struct write_data_args *data = (struct write_data_args*)args;
+	
+	write_data_to_disk(data->locale_filename, data->data, data->len);	
+
+
+	g_free(data->locale_filename);
+	g_free(data->data);
+	free(data);
+}
+
+
+static gchar *save_doc_async(GeanyDocument *doc, const gchar *locale_filename,
+								 const gchar *data, gsize len)
+{
+	gchar *err;
+	struct write_data_args* args;
+	pthread_t tid;
+
+	g_return_val_if_fail(doc != NULL, g_strdup(g_strerror(EINVAL)));
+	g_return_val_if_fail(data != NULL, g_strdup(g_strerror(EINVAL)));
+
+
+	args = malloc(sizeof(struct write_data_args));
+	
+	args->locale_filename = locale_filename;
+	args->data = data;
+	args->len = len;
+	
+	// Call thread right here!	
+	pthread_create(&tid, NULL, write_data_thread, args);
+
+
+	/* now the file is on disk, set real_path */
+	if (doc->real_path == NULL)
+	{
+		doc->real_path = tm_get_real_path(locale_filename);
+		doc->priv->is_remote = utils_is_remote_path(locale_filename);
+		monitor_file_setup(doc);
+
+	}
+	return NULL;
+}
 
 /**
  *  Saves the document.
@@ -1772,8 +1823,9 @@ gboolean document_save_file(GeanyDocument *doc, gboolean force)
 	doc->priv->file_disk_status = FILE_IGNORE;
 
 	/* actually write the content of data to the file on disk */
-	errmsg = save_doc(doc, locale_filename, data, len);
-	g_free(data);
+	errmsg = save_doc_async(doc, locale_filename, data, len);
+	
+	//g_free(data);
 
 	if (errmsg != NULL)
 	{
@@ -1814,7 +1866,7 @@ gboolean document_save_file(GeanyDocument *doc, gboolean force)
 		vte_cwd((doc->real_path != NULL) ? doc->real_path : doc->file_name, FALSE);
 #endif
 	}
-	g_free(locale_filename);
+	//g_free(locale_filename);
 
 	g_signal_emit_by_name(geany_object, "document-save", doc);
 
