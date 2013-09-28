@@ -102,6 +102,10 @@ typedef struct
 } undo_action;
 
 
+G_LOCK_DEFINE_STATIC (write_lock);
+static volatile int write_lock = 0;
+
+
 static void document_undo_clear(GeanyDocument *doc);
 static void document_redo_add(GeanyDocument *doc, guint type, gpointer data);
 static gboolean remove_page(guint page_num);
@@ -1676,16 +1680,29 @@ struct write_data_args
 	gsize len;
 };
 
+
+
 static void* write_data_thread(void* args)
 {
 	struct write_data_args *data = (struct write_data_args*)args;
 	
 	write_data_to_disk(data->locale_filename, data->data, data->len);	
 
+		
 
 	g_free(data->locale_filename);
 	g_free(data->data);
 	free(data);
+
+
+	G_LOCK(write_lock);
+	{
+		write_lock = 0;
+		fprintf(stderr, "Releasing the lock!\n");
+	}
+	G_UNLOCK(write_lock);
+
+
 }
 
 
@@ -1696,6 +1713,7 @@ static gchar *save_doc_async(GeanyDocument *doc, const gchar *locale_filename,
 	struct write_data_args* args;
 	pthread_t tid;
 
+
 	g_return_val_if_fail(doc != NULL, g_strdup(g_strerror(EINVAL)));
 	g_return_val_if_fail(data != NULL, g_strdup(g_strerror(EINVAL)));
 
@@ -1705,7 +1723,7 @@ static gchar *save_doc_async(GeanyDocument *doc, const gchar *locale_filename,
 	args->locale_filename = locale_filename;
 	args->data = data;
 	args->len = len;
-	
+
 	// Call thread right here!	
 	pthread_create(&tid, NULL, write_data_thread, args);
 
@@ -1753,6 +1771,26 @@ gboolean document_save_file(GeanyDocument *doc, gboolean force)
 	gsize len;
 	gchar *locale_filename;
 	const GeanyFilePrefs *fp;
+
+
+
+	G_LOCK(write_lock);
+
+		if(write_lock == 1)
+		{
+			fprintf(stderr, "Save is locked, nothing will happen!\n");
+			G_UNLOCK(write_lock);
+			return;
+		}
+		else
+		{
+			write_lock = 1;
+			fprintf(stderr, "Continue to the save!\n");
+		}	
+
+	G_UNLOCK(write_lock);	
+
+
 
 	g_return_val_if_fail(doc != NULL, FALSE);
 
