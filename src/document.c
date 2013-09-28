@@ -1687,32 +1687,48 @@ static void* write_data_thread(void* args)
 {
 	struct write_data_args *data = (struct write_data_args*)args;
 	
-	write_data_to_disk(data->locale_filename, data->data, data->len);	
-
-		
-
-
-
+        gchar* errmsg = write_data_to_disk(data->locale_filename, data->data, data->len);	
 
 	gdk_threads_enter();
 
 
-	sci_set_savepoint(data->doc->editor->sci);
+	if (errmsg != NULL)
+	{
+		ui_set_statusbar(TRUE, _("Error saving file (%s)."), errmsg);
 
-	if (file_prefs.disk_check_timeout > 0)
-		document_update_timestamp(data->doc, data->locale_filename);
+		if (!file_prefs.use_safe_file_saving)
+		{
+			SETPTR(errmsg,
+				g_strdup_printf(_("%s\n\nThe file on disk may now be truncated!"), errmsg));
+		}
+		dialogs_show_msgbox_with_secondary(GTK_MESSAGE_ERROR, _("Error saving file."), errmsg);
+		data->doc->priv->file_disk_status = FILE_OK;
+		utils_beep();
+	}
+	else
+	{
+		/* store the opened encoding for undo/redo */
+		store_saved_encoding(data->doc);
 
-	/* update filetype-related things */
-	document_set_filetype(data->doc, data->doc->file_type);
 
-	document_update_tab_label(data->doc);
 
-	msgwin_status_add(_("File %s saved."), data->doc->file_name);
-	ui_update_statusbar(data->doc, -1);
-#ifdef HAVE_VTE
-	vte_cwd((data->doc->real_path != NULL) ? data->doc->real_path : data->doc->file_name, FALSE);
-#endif
-	
+
+		sci_set_savepoint(data->doc->editor->sci);
+
+		if (file_prefs.disk_check_timeout > 0)
+			document_update_timestamp(data->doc, data->locale_filename);
+
+		/* update filetype-related things */
+		document_set_filetype(data->doc, data->doc->file_type);
+
+		document_update_tab_label(data->doc);
+
+		msgwin_status_add(_("File %s saved."), data->doc->file_name);
+		ui_update_statusbar(data->doc, -1);
+	    #ifdef HAVE_VTE
+		vte_cwd((data->doc->real_path != NULL) ? data->doc->real_path : data->doc->file_name, FALSE);
+            #endif
+	}
 
 	gdk_threads_leave();
 
@@ -1890,26 +1906,6 @@ gboolean document_save_file(GeanyDocument *doc, gboolean force)
 	errmsg = save_doc_async(doc, locale_filename, data, len);
 	
 	//g_free(data);
-
-	if (errmsg != NULL)
-	{
-		ui_set_statusbar(TRUE, _("Error saving file (%s)."), errmsg);
-
-		if (!file_prefs.use_safe_file_saving)
-		{
-			SETPTR(errmsg,
-				g_strdup_printf(_("%s\n\nThe file on disk may now be truncated!"), errmsg));
-		}
-		dialogs_show_msgbox_with_secondary(GTK_MESSAGE_ERROR, _("Error saving file."), errmsg);
-		doc->priv->file_disk_status = FILE_OK;
-		utils_beep();
-		g_free(locale_filename);
-		g_free(errmsg);
-		return FALSE;
-	}
-
-	/* store the opened encoding for undo/redo */
-	store_saved_encoding(doc);
 
 	/* ignore the following things if we are quitting */
 	if (! main_status.quitting)
