@@ -539,6 +539,8 @@ static GeanyDocument *document_create(const gchar *utf8_filename)
 #ifndef USE_GIO_FILEMON
 	doc->priv->last_check = time(NULL);
 #endif
+	fprintf(stderr, "Creating save_lock\n");
+	g_mutex_init(&doc->save_lock);
 
 	sidebar_openfiles_add(doc);	/* sets doc->iter */
 
@@ -1730,20 +1732,17 @@ static void* write_data_thread(void* args)
             #endif
 	}
 
-	gdk_threads_leave();
 
 	g_free(data->locale_filename);
 	g_free(data->data);
-	free(data);
 	
-	G_LOCK(write_lock);
-	{
-		write_lock = 0;
-		fprintf(stderr, "Releasing the lock!\n");
-	}
-	G_UNLOCK(write_lock);
+	fprintf(stderr, "Releasing the lock!\n");
 
+	g_mutex_unlock(&data->doc->save_lock);
 
+	free(data);
+
+	gdk_threads_leave();
 }
 
 
@@ -1815,23 +1814,13 @@ gboolean document_save_file(GeanyDocument *doc, gboolean force)
 	const GeanyFilePrefs *fp;
 
 
+	if(!g_mutex_trylock(&doc->save_lock))	
+	{
+		fprintf(stderr, "Save is locked, nothing will happen!\n");
+		return;
+	}
 
-	G_LOCK(write_lock);
-
-		if(write_lock == 1)
-		{
-			fprintf(stderr, "Save is locked, nothing will happen!\n");
-			G_UNLOCK(write_lock);
-			return;
-		}
-		else
-		{
-			write_lock = 1;
-			fprintf(stderr, "Continue to the save!\n");
-		}	
-
-	G_UNLOCK(write_lock);	
-
+	fprintf(stderr, "Continue to the save!\n");
 
 
 	g_return_val_if_fail(doc != NULL, FALSE);

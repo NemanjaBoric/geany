@@ -112,6 +112,8 @@ struct GeanyDocument
 	 * @see file_name. */
 	gchar 			*real_path;
 
+	GMutex save_lock;
+
 	struct GeanyDocumentPrivate *priv;	/* should be last, append fields before this item */
 };
 
